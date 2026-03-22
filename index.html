@@ -1,22 +1,924 @@
-const express = require('express');
-const path = require('path');
-const app = express();
-app.use(express.json());
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.post('/api/generate', async (req, res) => {
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(req.body)
-    });
-    res.json(await response.json());
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NoteProof</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0f2744;
+    --navy-mid: #1a3a5c;
+    --navy-light: #2a5580;
+    --teal: #0d8a6e;
+    --teal-light: #e1f5ee;
+    --teal-mid: #1d9e75;
+    --amber: #b87a12;
+    --amber-light: #faeeda;
+    --amber-mid: #ef9f27;
+    --red-light: #fcebeb;
+    --red-mid: #e24b4a;
+    --slate: #f5f6f8;
+    --border: #e0e3e8;
+    --border-mid: #c8cdd6;
+    --text-primary: #0f2744;
+    --text-secondary: #4a5568;
+    --text-muted: #8896a7;
+    --white: #ffffff;
+    --shadow: 0 1px 3px rgba(15,39,68,0.08), 0 4px 12px rgba(15,39,68,0.04);
+    --shadow-lg: 0 2px 8px rgba(15,39,68,0.10), 0 8px 24px rgba(15,39,68,0.06);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-lg: 14px;
   }
-});
-app.listen(process.env.PORT || 3000, () => console.log('NoteProof running'));
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: #eef0f4;
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    background: var(--navy);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .logo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--teal);
+    color: white;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  .logo-badge svg { width: 14px; height: 14px; }
+  .sidebar-logo h1 {
+    font-size: 15px;
+    font-weight: 500;
+    color: white;
+    line-height: 1.3;
+  }
+  .sidebar-logo p {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    margin-top: 3px;
+  }
+  .sidebar-nav {
+    padding: 16px 12px;
+    flex: 1;
+  }
+  .nav-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    padding: 0 8px;
+    margin: 8px 0 6px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13.5px;
+    color: rgba(255,255,255,0.6);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+    margin-bottom: 2px;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
+  .nav-item.active { background: rgba(13,138,110,0.2); color: var(--teal-mid); }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .sidebar-footer {
+    padding: 16px 12px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .compliance-badge {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+  }
+  .compliance-badge p { font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.5; }
+  .compliance-badge span { color: var(--teal-mid); font-weight: 500; }
+
+  /* Main content */
+  .main {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .topbar-title { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--teal-mid);
+    display: inline-block;
+  }
+  .topbar-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+
+  .content-area {
+    padding: 28px 32px;
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 18px 22px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-header-left { display: flex; align-items: center; gap: 10px; }
+  .card-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--teal-light);
+    color: var(--teal);
+    flex-shrink: 0;
+  }
+  .card-icon svg { width: 16px; height: 16px; }
+  .card-title { font-size: 13.5px; font-weight: 500; color: var(--text-primary); }
+  .card-subtitle { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+  .card-body { padding: 20px 22px; }
+
+  /* Form */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.02em; }
+  label .required { color: var(--red-mid); margin-left: 2px; }
+  input, select, textarea {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13.5px;
+    color: var(--text-primary);
+    background: var(--slate);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    transition: all 0.15s;
+    width: 100%;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--teal-mid);
+    background: white;
+    box-shadow: 0 0 0 3px rgba(13,138,110,0.08);
+  }
+  textarea { resize: vertical; min-height: 90px; line-height: 1.55; }
+  select { cursor: pointer; }
+
+  .generate-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 20px;
+    background: var(--navy);
+    color: white;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 18px;
+    letter-spacing: 0.01em;
+  }
+  .generate-btn:hover { background: var(--navy-mid); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+  .generate-btn:active { transform: translateY(0); }
+  .generate-btn:disabled { background: var(--border-mid); cursor: not-allowed; transform: none; box-shadow: none; }
+  .generate-btn svg { width: 16px; height: 16px; }
+  .btn-spinner { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Output */
+  .output-card { grid-column: 1; }
+  .input-card { grid-column: 1; }
+  
+  @media (max-width: 1100px) {
+    .content-area { grid-template-columns: 1fr; }
+    .app-shell { grid-template-columns: 1fr; }
+    .sidebar { height: auto; position: relative; }
+  }
+
+  .note-output {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.75;
+  }
+  .note-section {
+    margin-bottom: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .note-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  .note-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .note-section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--teal-light);
+  }
+  .note-section-content { color: var(--text-primary); font-size: 13px; }
+  .note-section-content p { margin-bottom: 6px; }
+  .note-section-content p:last-child { margin-bottom: 0; }
+
+  .outcome-block {
+    background: var(--teal-light);
+    border-left: 3px solid var(--teal-mid);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 12px 14px;
+    margin-top: 6px;
+  }
+  .outcome-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 12.5px;
+  }
+  .outcome-row:last-child { margin-bottom: 0; }
+  .outcome-key { font-weight: 500; color: var(--teal); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 1px; }
+  .outcome-val { color: var(--text-primary); }
+
+  .placeholder-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+  .placeholder-icon {
+    width: 52px; height: 52px;
+    background: var(--slate);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .placeholder-icon svg { width: 24px; height: 24px; color: var(--border-mid); }
+  .placeholder-state h3 { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+  .placeholder-state p { font-size: 12.5px; line-height: 1.6; max-width: 240px; }
+
+  .note-meta-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .meta-chip.date { background: var(--amber-light); color: var(--amber); }
+  .meta-chip.participant { background: #e8eaf6; color: #3949ab; }
+  .meta-chip.contact { background: var(--teal-light); color: var(--teal); }
+  .meta-chip svg { width: 11px; height: 11px; }
+
+  .action-bar {
+    display: flex;
+    gap: 8px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--border);
+    background: var(--slate);
+  }
+  .action-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text-secondary);
+  }
+  .action-btn:hover { background: var(--slate); border-color: var(--border-mid); color: var(--text-primary); }
+  .action-btn svg { width: 13px; height: 13px; }
+  .action-btn.primary { background: var(--teal-mid); color: white; border-color: var(--teal-mid); }
+  .action-btn.primary:hover { background: var(--teal); border-color: var(--teal); }
+
+  .audit-stamp {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-top: 14px;
+    margin-bottom: 4px;
+  }
+  .audit-stamp svg { width: 14px; height: 14px; color: var(--teal-mid); flex-shrink: 0; }
+  .audit-stamp p { font-size: 11px; color: var(--text-muted); }
+  .audit-stamp span { color: var(--text-secondary); font-weight: 500; }
+
+  .loading-skeleton {
+    background: linear-gradient(90deg, var(--slate) 25%, var(--border) 50%, var(--slate) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 4px;
+    height: 14px;
+    margin-bottom: 8px;
+  }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  .error-banner {
+    background: var(--red-light);
+    border: 1px solid #f09595;
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: #791f1f;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .error-banner svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+
+  .tip-box {
+    background: var(--amber-light);
+    border-left: 3px solid var(--amber-mid);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--amber);
+    line-height: 1.5;
+    margin-top: 12px;
+  }
+  .tip-box strong { display: block; margin-bottom: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .section-divider {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0 0 8px;
+    margin: 16px 0 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Scrollable output */
+  .note-scroll {
+    max-height: 68vh;
+    overflow-y: auto;
+    padding: 20px 22px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-mid) transparent;
+  }
+  .note-scroll::-webkit-scrollbar { width: 5px; }
+  .note-scroll::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-badge">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a2 2 0 012 2v1h1a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h1V3a2 2 0 012-2zm0 1.5A.5.5 0 007.5 3v1h1V3A.5.5 0 008 2.5zm3 5.5H5a.5.5 0 000 1h6a.5.5 0 000-1zm0 2H5a.5.5 0 000 1h6a.5.5 0 000-1zm-3 2H5a.5.5 0 000 1h3a.5.5 0 000-1z"/></svg>
+        NoteProof
+      </div>
+      <h1>NoteProof</h1>
+      <p>Audit-ready notes for NDIS coordinators</p>
+    </div>
+    <nav class="sidebar-nav">
+      <p class="nav-label">Tools</p>
+      <a class="nav-item active" href="#">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2zm4 0v1h4V2H6zm-1 3a.5.5 0 000 1h6a.5.5 0 000-1H5zm0 2a.5.5 0 000 1h6a.5.5 0 000-1H5zm0 2a.5.5 0 000 1h3a.5.5 0 000-1H5z"/></svg>
+        Progress Notes
+      </a>
+      <a class="nav-item" href="#" onclick="alert('Feature coming soon')">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M14 1a1 1 0 011 1v8a1 1 0 01-1 1h-2.5a2 2 0 00-1.6.8L8 14.333 6.1 11.8a2 2 0 00-1.6-.8H2a1 1 0 01-1-1V2a1 1 0 011-1h12z"/></svg>
+        Case Notes
+      </a>
+      <a class="nav-item" href="#" onclick="alert('Feature coming soon')">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3zm5-6a3 3 0 100-6 3 3 0 000 6z"/></svg>
+        Participant Records
+      </a>
+      <p class="nav-label" style="margin-top:16px">Reference</p>
+      <a class="nav-item" href="#" onclick="alert('Opens NDIS Practice Standards')">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.211 2.047a.5.5 0 00-.422 0l-7.5 3.5a.5.5 0 00.025.917l7.5 3a.5.5 0 00.372 0L14 7.14V13a1 1 0 001 1 1 1 0 001-1V6.5a.5.5 0 00-.294-.456L8.211 2.047z"/></svg>
+        Practice Standards
+      </a>
+      <a class="nav-item" href="#" onclick="alert('Opens NDIS 2024 Act guidance')">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.05.435c-.58-.58-1.52-.58-2.1 0L.436 6.95c-.58.58-.58 1.519 0 2.098l6.516 6.516c.58.58 1.519.58 2.098 0l6.516-6.516c.58-.58.58-1.519 0-2.098L9.05.435zm-.47 8.813l-.5.5a.5.5 0 01-.707 0l-.5-.5a.5.5 0 010-.707l.5-.5a.5.5 0 01.707 0l.5.5a.5.5 0 010 .707zm0-4l-.5.5a.5.5 0 01-.707 0l-.5-.5a.5.5 0 010-.707l.5-.5a.5.5 0 01.707 0l.5.5a.5.5 0 010 .707z"/></svg>
+        2024 Amendment Act
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="compliance-badge">
+        <p>Aligned with <span>NDIS Q&S Commission</span> standards and the <span>2024 NDIS Amendment Act</span>. Notes are AI-drafted — always verify before submission.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18" style="color:#8896a7"><path d="M2 2h12v12H2z" rx="2"/><path d="M5 7h6M5 10h4"/></svg>
+        <span class="topbar-title">New Progress Note</span>
+      </div>
+      <div class="topbar-right">
+        <span class="topbar-status"><span class="status-dot"></span>AI Ready</span>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <!-- Input Form -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="card-icon">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2zm4 0v1h4V2H6zm-1 3a.5.5 0 000 1h6a.5.5 0 000-1H5zm0 2a.5.5 0 000 1h6a.5.5 0 000-1H5zm0 2a.5.5 0 000 1h3a.5.5 0 000-1H5z"/></svg>
+              </div>
+              <div>
+                <div class="card-title">Interaction Details</div>
+                <div class="card-subtitle">Enter your brief summary below</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Date of contact <span class="required">*</span></label>
+                <input type="date" id="contactDate">
+              </div>
+              <div class="form-group">
+                <label>Contact type <span class="required">*</span></label>
+                <select id="contactType">
+                  <option value="">Select type…</option>
+                  <option>Phone call</option>
+                  <option>Video call</option>
+                  <option>In-person visit</option>
+                  <option>Email</option>
+                  <option>Service provider meeting</option>
+                  <option>Plan review meeting</option>
+                  <option>Team meeting</option>
+                  <option>Support coordinator internal review</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Participant name/initials <span class="required">*</span></label>
+                <input type="text" id="participantName" placeholder="e.g. J.S. or Jane Smith">
+              </div>
+              <div class="form-group">
+                <label>NDIS plan goal area</label>
+                <select id="goalArea">
+                  <option value="">Select goal area…</option>
+                  <option>Daily Activities</option>
+                  <option>Social & Community Participation</option>
+                  <option>Improved Living Arrangements</option>
+                  <option>Increased Social & Community Participation</option>
+                  <option>Finding & Keeping a Job</option>
+                  <option>Improved Health & Wellbeing</option>
+                  <option>Improved Learning</option>
+                  <option>Improved Life Choices</option>
+                  <option>Improved Daily Living</option>
+                  <option>Improved Relationships</option>
+                  <option>Support Coordination</option>
+                </select>
+              </div>
+
+              <div class="form-group full">
+                <div class="section-divider">Brief description of interaction</div>
+              </div>
+
+              <div class="form-group full">
+                <label>What happened? <span class="required">*</span></label>
+                <textarea id="interactionDesc" placeholder="e.g. Called participant to discuss upcoming OT assessment. She mentioned feeling anxious about the home visit. I explained the process and confirmed the appointment for next Thursday. She asked about transport and I said I'd contact the provider to confirm accessible transport is arranged." style="min-height:110px"></textarea>
+              </div>
+
+              <div class="form-group full">
+                <label>Participant response / observed outcome</label>
+                <textarea id="participantResponse" placeholder="e.g. Participant expressed relief after explanation. Agreed to proceed with appointment. Voice tone was calm by end of call." style="min-height:70px"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Next steps</label>
+                <input type="text" id="nextSteps" placeholder="e.g. Confirm transport with provider">
+              </div>
+              <div class="form-group">
+                <label>Consent / info sharing note</label>
+                <input type="text" id="consentNote" placeholder="e.g. Participant consented to share info with OT">
+              </div>
+            </div>
+            <div class="tip-box">
+              <strong>Tip</strong>
+              Write naturally — bullet points, shorthand, or rough notes all work. The AI will structure your input into a full audit-ready progress note.
+            </div>
+            <button class="generate-btn" id="generateBtn" onclick="generateNote()">
+              <svg viewBox="0 0 16 16" fill="currentColor" id="btnIcon"><path d="M11.251.068a.5.5 0 01.227.58L9.677 6.5H13a.5.5 0 01.364.843l-8 8.5a.5.5 0 01-.842-.49L6.323 9.5H3a.5.5 0 01-.364-.843l8-8.5a.5.5 0 01.615-.09z"/></svg>
+              <span id="btnText">Generate Progress Note</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output Panel -->
+      <div>
+        <div class="card" id="outputCard">
+          <div class="card-header">
+            <div class="card-header-left">
+              <div class="card-icon" style="background:#e8eaf6; color:#3949ab;">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 0H4a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4.5L9.5 0zm0 1v2a1 1 0 001 1h2L9.5 1zM5 5a.5.5 0 000 1h6a.5.5 0 000-1H5zm0 2a.5.5 0 000 1h6a.5.5 0 000-1H5zm0 2a.5.5 0 000 1h3a.5.5 0 000-1H5z"/></svg>
+              </div>
+              <div>
+                <div class="card-title">Generated Progress Note</div>
+                <div class="card-subtitle">Audit-ready · NDIS compliant</div>
+              </div>
+            </div>
+            <div id="noteStatus"></div>
+          </div>
+
+          <div id="outputBody">
+            <div class="note-scroll">
+              <div class="placeholder-state">
+                <div class="placeholder-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </div>
+                <h3>Your progress note will appear here</h3>
+                <p>Fill in the interaction details and click Generate to create your audit-ready note.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Set today's date
+  document.getElementById('contactDate').value = new Date().toISOString().split('T')[0];
+
+  async function generateNote() {
+    const date = document.getElementById('contactDate').value;
+    const contactType = document.getElementById('contactType').value;
+    const participant = document.getElementById('participantName').value.trim();
+    const goalArea = document.getElementById('goalArea').value;
+    const desc = document.getElementById('interactionDesc').value.trim();
+    const response = document.getElementById('participantResponse').value.trim();
+    const nextSteps = document.getElementById('nextSteps').value.trim();
+    const consent = document.getElementById('consentNote').value.trim();
+
+    if (!participant || !desc || !date || !contactType) {
+      showError('Please fill in the required fields: date, contact type, participant name, and interaction description.');
+      return;
+    }
+
+    setLoading(true);
+
+    const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const prompt = `You are an NDIS compliance documentation assistant for Support Coordinators in Australia.
+
+Convert this brief interaction summary into a professional, audit-ready progress note complying with NDIS Quality and Safeguards Commission standards and the 2024 NDIS Amendment Act.
+
+INPUT DETAILS:
+- Date: ${formattedDate}
+- Participant: ${participant}
+- Contact type: ${contactType}
+- NDIS plan goal area: ${goalArea || 'Not specified — infer from context'}
+- Interaction description: ${desc}
+- Participant response/observed outcome: ${response || 'Not provided — infer appropriately'}
+- Next steps noted: ${nextSteps || 'Not specified — suggest based on context'}
+- Consent/info sharing: ${consent || 'No specific consent notation provided'}
+
+OUTPUT FORMAT: Return a JSON object with exactly these keys:
+{
+  "header": {
+    "date": "formatted date",
+    "participant": "participant name/initials",
+    "contactType": "type of contact",
+    "preparedBy": "Support Coordinator",
+    "goalArea": "NDIS goal area"
+  },
+  "purposeOfContact": "2-3 sentences linking the contact to a specific NDIS plan goal. Person-centred language.",
+  "actionsTaken": "3-5 sentences describing what the coordinator did. Active voice. Specific.",
+  "participantResponseAndOutcomes": "2-3 sentences describing participant's response and observed outcomes. Objective, observational language.",
+  "outcomeEvidenceBlock": {
+    "goal": "The specific NDIS plan goal this interaction supports",
+    "activity": "The activity or action taken during this interaction",
+    "measurableIndicator": "The observable, measurable indicator of progress toward the goal"
+  },
+  "nextSteps": [
+    {"action": "specific action", "responsibleParty": "who", "timeframe": "when"}
+  ],
+  "consentNotation": "Consent and information sharing notation, or state that no third-party information sharing occurred this contact.",
+  "auditNote": "One sentence confirming this note meets NDIS Practice Standards for Support Coordination."
+}
+
+STYLE RULES:
+- Person-centred, strengths-based language
+- Avoid jargon; use plain professional English
+- Never use first-person ("I", "we") — use "The Support Coordinator" or "the coordinator"
+- Objective and factual tone
+- Suitable for NDIS Commission audit review and plan reassessment evidence
+- Each field should be complete and self-contained
+
+Return ONLY the JSON object, no markdown fences or preamble.`;
+
+    try {
+      const apiResponse = await fetch('/api/generate', {
+        method: 'POST',
+
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      if (!apiResponse.ok) {
+        const err = await apiResponse.json().catch(() => ({}));
+        throw new Error(err.error?.message || `API error ${apiResponse.status}`);
+      }
+
+      const data = await apiResponse.json();
+      const rawText = data.content.map(b => b.text || '').join('');
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      const note = JSON.parse(clean);
+      renderNote(note, formattedDate);
+
+    } catch (err) {
+      showError('Could not generate the note: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function renderNote(note, formattedDate) {
+    const nextStepsHtml = (note.nextSteps || []).map(ns => `
+      <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+        <span>${ns.action}</span>
+        <span style="color:var(--text-muted);white-space:nowrap">${ns.responsibleParty}</span>
+        <span style="background:var(--amber-light);color:var(--amber);padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap">${ns.timeframe}</span>
+      </div>`).join('');
+
+    const html = `
+      <div class="note-scroll">
+        <div class="note-meta-bar">
+          <span class="meta-chip date">
+            <svg viewBox="0 0 12 12" fill="currentColor"><path d="M9.5 1H9V0H8v1H4V0H3v1h-.5A1.5 1.5 0 001 2.5v7A1.5 1.5 0 002.5 11h7A1.5 1.5 0 0011 9.5v-7A1.5 1.5 0 009.5 1zM2 4h8v5.5a.5.5 0 01-.5.5h-7a.5.5 0 01-.5-.5V4z"/></svg>
+            ${formattedDate}
+          </span>
+          <span class="meta-chip participant">
+            <svg viewBox="0 0 12 12" fill="currentColor"><path d="M6 6a3 3 0 100-6 3 3 0 000 6zm-.5 1C3 7 1 9 1 11h10c0-2-2-4-4.5-4z"/></svg>
+            ${note.header?.participant || ''}
+          </span>
+          <span class="meta-chip contact">
+            <svg viewBox="0 0 12 12" fill="currentColor"><path d="M10.354 1.146a.5.5 0 010 .708L4.207 8l6.147 6.146a.5.5 0 01-.708.708l-6.5-6.5a.5.5 0 010-.708l6.5-6.5a.5.5 0 01.708 0z"/></svg>
+            ${note.header?.contactType || ''}
+          </span>
+          ${note.header?.goalArea ? `<span class="meta-chip" style="background:#f3e8ff;color:#7c3aed;font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:20px">${note.header.goalArea}</span>` : ''}
+        </div>
+
+        <div class="note-section">
+          <div class="note-section-label">Purpose of Contact</div>
+          <div class="note-section-content"><p>${note.purposeOfContact}</p></div>
+        </div>
+
+        <div class="note-section">
+          <div class="note-section-label">Actions Taken by Coordinator</div>
+          <div class="note-section-content"><p>${note.actionsTaken}</p></div>
+        </div>
+
+        <div class="note-section">
+          <div class="note-section-label">Participant Response & Observed Outcomes</div>
+          <div class="note-section-content"><p>${note.participantResponseAndOutcomes}</p></div>
+        </div>
+
+        <div class="note-section">
+          <div class="note-section-label">Outcomes Evidence Block</div>
+          <div class="outcome-block">
+            <div class="outcome-row">
+              <span class="outcome-key">Goal</span>
+              <span class="outcome-val">${note.outcomeEvidenceBlock?.goal || ''}</span>
+            </div>
+            <div class="outcome-row">
+              <span class="outcome-key">Activity</span>
+              <span class="outcome-val">${note.outcomeEvidenceBlock?.activity || ''}</span>
+            </div>
+            <div class="outcome-row">
+              <span class="outcome-key">Measurable Indicator</span>
+              <span class="outcome-val">${note.outcomeEvidenceBlock?.measurableIndicator || ''}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="note-section">
+          <div class="note-section-label">Next Steps</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;display:grid;grid-template-columns:1fr auto auto;gap:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:4px;border-bottom:1px solid var(--border)">
+            <span>Action</span><span>Responsible</span><span>Timeframe</span>
+          </div>
+          ${nextStepsHtml}
+        </div>
+
+        <div class="note-section">
+          <div class="note-section-label">Consent & Information Sharing</div>
+          <div class="note-section-content"><p>${note.consentNotation}</p></div>
+        </div>
+
+        <div class="audit-stamp">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.707 6.207l-4 4a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L7 8.086l3.293-3.293a1 1 0 011.414 1.414z"/></svg>
+          <p><span>Audit notation:</span> ${note.auditNote}</p>
+        </div>
+      </div>
+    `;
+
+    const copyText = buildCopyText(note, formattedDate);
+
+    document.getElementById('outputBody').innerHTML = html + `
+      <div class="action-bar">
+        <button class="action-btn primary" onclick="copyNote(this)" data-text="${encodeURIComponent(copyText)}">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V2zm2-1a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V2a1 1 0 00-1-1H6zM2 5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1v-1h1v1a2 2 0 01-2 2H2a2 2 0 01-2-2V6a2 2 0 012-2h1v1H2z"/></svg>
+          Copy note
+        </button>
+        <button class="action-btn" onclick="regenerate()">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 104.546 2.914.5.5 0 10-.908-.418A4 4 0 118 4H6.5a.5.5 0 000 1h2a.5.5 0 00.5-.5v-2a.5.5 0 00-1 0V3z"/></svg>
+          Regenerate
+        </button>
+      </div>
+    `;
+  }
+
+  function buildCopyText(note, date) {
+    const ns = (note.nextSteps || []).map(s => `  • ${s.action} — ${s.responsibleParty} (${s.timeframe})`).join('\n');
+    return `NDIS PROGRESS NOTE
+==================
+Date: ${date}
+Participant: ${note.header?.participant || ''}
+Contact Type: ${note.header?.contactType || ''}
+Goal Area: ${note.header?.goalArea || ''}
+Prepared by: Support Coordinator
+
+PURPOSE OF CONTACT
+${note.purposeOfContact}
+
+ACTIONS TAKEN
+${note.actionsTaken}
+
+PARTICIPANT RESPONSE & OUTCOMES
+${note.participantResponseAndOutcomes}
+
+OUTCOMES EVIDENCE BLOCK
+Goal: ${note.outcomeEvidenceBlock?.goal || ''}
+Activity: ${note.outcomeEvidenceBlock?.activity || ''}
+Measurable Indicator: ${note.outcomeEvidenceBlock?.measurableIndicator || ''}
+
+NEXT STEPS
+${ns}
+
+CONSENT & INFORMATION SHARING
+${note.consentNotation}
+
+AUDIT NOTATION
+${note.auditNote}`;
+  }
+
+  function copyNote(btn) {
+    const text = decodeURIComponent(btn.dataset.text);
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13"><path d="M13.707 1.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L5 8.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Copied!';
+      setTimeout(() => { btn.innerHTML = orig; }, 2000);
+    });
+  }
+
+  function regenerate() {
+    generateNote();
+  }
+
+  function showError(msg) {
+    const body = document.getElementById('outputBody');
+    body.innerHTML = `
+      <div class="note-scroll">
+        <div class="error-banner">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zM7 6.5a1 1 0 012 0v2a1 1 0 01-2 0v-2zm1 5.5a1 1 0 100-2 1 1 0 000 2z"/></svg>
+          ${msg}
+        </div>
+        <div class="placeholder-state">
+          <div class="placeholder-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          </div>
+          <h3>Ready to try again</h3>
+          <p>Correct the issue above and click Generate.</p>
+        </div>
+      </div>`;
+  }
+
+  function setLoading(state) {
+    const btn = document.getElementById('generateBtn');
+    const icon = document.getElementById('btnIcon');
+    const text = document.getElementById('btnText');
+    btn.disabled = state;
+    if (state) {
+      icon.innerHTML = '<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="20 10" class="btn-spinner"/>';
+      icon.setAttribute('viewBox', '0 0 16 16');
+      text.textContent = 'Generating…';
+      document.getElementById('outputBody').innerHTML = `
+        <div class="note-scroll">
+          <div style="padding:4px 0">
+            ${[100, 80, 95, 60, 100, 75, 85].map((w, i) =>
+              `<div class="loading-skeleton" style="width:${w}%;opacity:${1 - i*0.07}"></div>`
+            ).join('')}
+            <div style="height:16px"></div>
+            ${[100, 70, 90, 55].map((w, i) =>
+              `<div class="loading-skeleton" style="width:${w}%;opacity:${0.7 - i*0.05}"></div>`
+            ).join('')}
+          </div>
+        </div>`;
+    } else {
+      icon.innerHTML = '<path d="M11.251.068a.5.5 0 01.227.58L9.677 6.5H13a.5.5 0 01.364.843l-8 8.5a.5.5 0 01-.842-.49L6.323 9.5H3a.5.5 0 01-.364-.843l8-8.5a.5.5 0 01.615-.09z"/>';
+      text.textContent = 'Generate Progress Note';
+    }
+  }
+</script>
+</body>
+</html>
